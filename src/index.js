@@ -113,12 +113,10 @@ export const loadWasmComplete = async (
     arguments: argumentList,
     print: text => {
       console.log('[WASM] ' + text)
-      if (!text.startsWith('[INFO]')) {
-        dispatch({
-          type: WASM_ADD_CONSOLE_TEXT,
-          payload: text
-        })
-      }
+      dispatch({
+        type: WASM_ADD_CONSOLE_TEXT,
+        payload: text
+      })
     },
     printErr: text => {
       console.log('[WASM-ERROR] ' + text)
