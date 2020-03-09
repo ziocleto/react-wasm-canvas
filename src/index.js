@@ -1,64 +1,5 @@
 import React, {useEffect} from 'react'
-import {useDispatch, useSelector} from 'react-redux'
 import axios from 'axios'
-
-const WASM_LOAD_START = 'WASM_LOAD_START'
-const WASM_INITIALIZE_SUCCESS = 'WASM_INITIALIZE_SUCCESS'
-const WASM_INITIALIZE_FAILED = 'WASM_INITIALIZE_FAILED'
-const WASM_SET_CANVAS_SIZE = 'WASM_SET_CANVAS_SIZE'
-const WASM_RESIZE_CALLBACK = 'WASM_RESIZE_CALLBACK'
-const WASM_SET_CANVAS_VISIBILITY = 'WASM_SET_CANVAS_VISIBILITY'
-const WASM_ADD_CONSOLE_TEXT = 'WASM_ADD_CONSOLE_TEXT'
-
-const initialState = {
-  error: null,
-  resize: true,
-  loading: false,
-  initialized: false,
-  running: false,
-  consoleOutput: [],
-  consoleOutputDirty: false,
-  canvasWidth: 1,
-  canvasHeight: 1,
-  canvasTop: 0,
-  canvasLeft: 0,
-  canvasVisible: 'hidden'
-}
-
-const updateObject = (currentObject, updatedObject) => {
-  return {
-    ...currentObject,
-    ...updatedObject
-  }
-}
-
-export const wasmSetCanvasVisibility = visible => {
-  return {
-    type: WASM_SET_CANVAS_VISIBILITY,
-    visible: visible
-  }
-}
-
-export const wasmSetCanvasSize = rect => {
-  return {
-    type: WASM_SET_CANVAS_SIZE,
-    payload: rect
-  }
-}
-
-export const wasmSetCanvasSizeCallback = () => {
-  return {
-    type: WASM_RESIZE_CALLBACK,
-    payload: null
-  }
-}
-
-export const wasmInitialized = flag => {
-  return {
-    type: flag === true ? WASM_INITIALIZE_SUCCESS : WASM_INITIALIZE_FAILED,
-    payload: null
-  }
-}
 
 export const loadWasmComplete = async (
   preFolder,
@@ -66,7 +7,8 @@ export const loadWasmComplete = async (
   canvasRef,
   argumentList,
   mandatoryWebGLVersionSupportNumber,
-  dispatch
+  dispatch,
+  wasmState,
 ) => {
   try {
     if (!checkWasmSupport()) {
@@ -80,9 +22,8 @@ export const loadWasmComplete = async (
     let wasmAxios = axios.create()
     wasmAxios.defaults.baseURL = preFolder || ''
 
-    const currentDate = new Date()
     let downloadConfig = {
-      url: project + '.wasm?t=' + currentDate.getTime(),
+      url: project + '.wasm',
       method: 'get',
       responseType: 'arraybuffer'
     }
@@ -90,7 +31,7 @@ export const loadWasmComplete = async (
     const wasmBinary = new Uint8Array(binaryContent.data)
 
     downloadConfig = {
-      url: project + '.js?t=' + currentDate.getTime(),
+      url: project + '.js',
       method: 'get',
       responseType: 'text'
     }
@@ -104,34 +45,29 @@ export const loadWasmComplete = async (
     return null
   }
 
-  window.addEventListener('resize', () => {
-    dispatch(wasmSetCanvasSizeCallback())
-  })
-
   window.Module = {
     doNotCaptureKeyboard: true,
     arguments: argumentList,
     print: text => {
       console.log('[WASM] ' + text)
-      dispatch({
-        type: WASM_ADD_CONSOLE_TEXT,
-        payload: text
-      })
+      if (dispatch && wasmState) dispatch(wasmAddConsoleTextInternal(wasmState, text))
     },
     printErr: text => {
       console.log('[WASM-ERROR] ' + text)
     },
     canvas: canvasRef,
     onRuntimeInitialized: () => {
-      dispatch(wasmInitialized(true))
+      console.log("WASM runtime initialized");
     },
     instantiateWasm: (imports, successCallback) => {
       WebAssembly.instantiate(window.wasmBinary, imports)
         .then(function (output) {
+          console.log("WASM initiated successfully");
+          if (dispatch) dispatch(null)
           successCallback(output.instance)
         })
         .catch(function (e) {
-          dispatch(wasmInitialized(false))
+          console.log("WASM initiated failed because: ", e.message);
         })
       return {}
     }
@@ -148,51 +84,53 @@ const checkWasmSupport = () => {
 
 const checkWebGLSupport = (webGLVersion) => {
   let canvas = document.createElement('canvas')
-  let result = false
   try {
     if (canvas.getContext(webGLVersion) !== null) {
-      result = true
+      return true
     }
   } catch (ex) {
+    return false
   }
-  return result
 }
 
 const WasmCanvas = props => {
-  let canvas = React.useRef(null)
-  const dispatch = useDispatch()
-  const wasmState = useSelector(state => state.wasm)
+  let canvasRef = React.useRef(null);
+
+  const [wasmState, wasmStore] = props.dispatcher ? props.dispatcher : [null,null]
 
   useEffect(() => {
     loadWasmComplete(
       props.preFolder,
       props.wasmName,
-      canvas.current,
+      canvasRef.current,
       props.argumentList,
       props.mandatoryWebGLVersionSupporNumber,
-      dispatch
-    )
-  }, [canvas, dispatch, props])
+      wasmStore,
+      wasmState,
+    ).then()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
-  const canvasSizeX = wasmState.canvasWidth.toString() + 'px'
-  const canvasSizeY = wasmState.canvasHeight.toString() + 'px'
+
+  const rect = props.canvasContainer ? props.canvasContainer.getBoundingClientRect() : props.initialRect;
+  const visibility = props.canvasContainer ? "visible" : props.initialVisibility;
+
+  const canvasSizeX = rect.width.toString() + 'px'
+  const canvasSizeY = rect.height.toString() + 'px'
 
   const canvasClientSizeX =
-    (wasmState.canvasWidth * (window.devicePixelRatio || 1)).toString() + 'px'
+    (rect.width * (window.devicePixelRatio || 1)).toString() + 'px'
   const canvasClientSizeY =
-    (wasmState.canvasHeight * (window.devicePixelRatio || 1)).toString() + 'px'
+    (rect.height * (window.devicePixelRatio || 1)).toString() + 'px'
 
   const canvasPadding = props.padding ? props.padding : '0px'
   const canvasMargin = props.margin ? props.margin : '0px'
   const canvasRadius = props.borderRadius ? props.borderRadius : '0px'
 
   const canvasStyle = {
-    position: 'absolute',
-    visibility: wasmState.canvasVisible,
+    visibility: visibility,
     width: canvasSizeX,
     height: canvasSizeY,
-    left: wasmState.canvasLeft,
-    top: wasmState.canvasTop,
     margin: canvasMargin,
     padding: canvasPadding,
     borderRadius: canvasRadius
@@ -204,86 +142,24 @@ const WasmCanvas = props => {
       width={canvasClientSizeX}
       height={canvasClientSizeY}
       style={canvasStyle}
-      ref={canvas}
-      className='Canvas'
+      ref={canvasRef}
       onContextMenu={e => e.preventDefault()}
     />
   )
 }
+
 export default WasmCanvas
 
-const wasmLoadStart = (state, action) => {
-  return updateObject(state, {
-    error: null,
-    loading: true
-  })
-}
-
-const wasmInitializeSuccess = (state, action) => {
-  return updateObject(state, {
-    error: null,
-    loading: false,
-    initialized: true,
-    running: true
-  })
-}
-
-const wasmInitializeFailed = (state, action) => {
-  return updateObject(state, {
-    initialized: false,
-    running: false,
-    error: action.error
-  })
-}
-
-const wasmSetCanvasSizeInternal = (state, rect) => {
-  return updateObject(state, {
-    canvasTop: rect.top,
-    canvasLeft: rect.left,
-    canvasWidth: rect.width,
-    canvasHeight: rect.height,
-    resize: false
-  })
-}
-
-const wasmSetCanvasVisibilityInternal = (state, action) => {
-  return updateObject(state, {
-    canvasVisible: action.visible
-  })
-}
-
 const wasmAddConsoleTextInternal = (state, action) => {
+  if (state === null) {
+    return {
+      consoleOutput: action,
+      consoleOutputDirty: true
+    }
+  }
   return {
     ...state,
-    consoleOutput: [...state.consoleOutput, action.payload],
+    consoleOutput: [...state.consoleOutput, action],
     consoleOutputDirty: !state.consoleOutputDirty
-  }
-}
-
-const wasmResizeCallbackInternal = (state, action) => {
-  return {
-    ...state,
-    resize: true
-  }
-}
-
-export const wasmReducer = (state = initialState, action) => {
-  switch (action.type) {
-    case WASM_LOAD_START:
-      return wasmLoadStart(state, action)
-    case WASM_INITIALIZE_SUCCESS:
-      return wasmInitializeSuccess(state, action)
-    case WASM_INITIALIZE_FAILED:
-      return wasmInitializeFailed(state, action)
-    case WASM_ADD_CONSOLE_TEXT:
-      return wasmAddConsoleTextInternal(state, action)
-    case WASM_RESIZE_CALLBACK:
-      return wasmResizeCallbackInternal(state, action)
-    case WASM_SET_CANVAS_SIZE:
-      return wasmSetCanvasSizeInternal(state, action.payload)
-    case WASM_SET_CANVAS_VISIBILITY:
-      return wasmSetCanvasVisibilityInternal(state, action)
-    default:
-      return state
   }
 }
