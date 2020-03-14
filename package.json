@@ -1,6 +1,6 @@
 {
   "name": "react-wasm-canvas",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "A stateless React Component that renders a webGL1 or webGL2 canvas from a WebAssembly module",
   "author": "ziocleto",
   "license": "MIT",

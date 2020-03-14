@@ -1,6 +1,8 @@
 import React, {useEffect} from 'react'
 import axios from 'axios'
 
+export const ReactWasm = 'reactWasm';
+
 export const loadWasmComplete = async (
   preFolder,
   project,
@@ -93,7 +95,7 @@ const checkWebGLSupport = (webGLVersion) => {
   }
 }
 
-const WasmCanvas = props => {
+const WasmCanvas = (props) => {
   let canvasRef = React.useRef(null);
 
   const [wasmState, wasmStore] = props.dispatcher ? props.dispatcher : [null,null]
